@@ -4,7 +4,7 @@ import type { WebSocket } from 'ws';
 export const secret=()=>randomBytes(32).toString('hex');
 export const id=()=>randomUUID();
 export class ApiFault extends Error { constructor(public status:number,public code:ErrorCode,message:string,public retryable=false){super(message);} }
-export const fault=(status:number,code:ErrorCode,message:string,retryable=false):never=>{throw new ApiFault(status,code,message,retryable);};
+export function fault(status:number,code:ErrorCode,message:string,retryable=false):never{throw new ApiFault(status,code,message,retryable);}
 export interface Session extends Identity {id:string;token:string;csrfToken:string;expiresAt:number;roomId?:string;sockets:Set<WebSocket>;offlineAt:number;}
 export interface Room {id:string;ownerId:string;code:string;secret:string;members:Set<string>;banned:Set<string>;locked:boolean;expiresAt:number;activity:number;revision:number;closed:boolean;}
 export interface StoredFile {id:string;name:string;size:number;diskId:string;state:FileState;committedBytes:number;hashes:string[];fullHash?:string;downloadRequested:boolean;}

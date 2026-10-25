@@ -6,7 +6,7 @@ import { config } from '../src/config';
 export async function harness(overrides: Record<string, unknown> = {}) {
   let time = 1000000;
   const root = await mkdtemp(join(tmpdir(),'landrop-test-'));
-  const app = await buildApp({...config({}),storageRoot:join(root,'owned'),...overrides},{now:()=>time,schedule:false});
+  const app = await buildApp({...config({}),storageRoot:join(root,'owned'),...overrides},{now:()=>time,monotonic:()=>time,schedule:false});
   const request = (method: string,url: string,payload?: any,headers: Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{host:'127.0.0.1:4173',origin:'http://127.0.0.1:4173',...(payload!==undefined?{'content-type':'application/json'}:{}),...headers}});
   async function user(name='Alex') {
     const res=await request('POST','/api/session',{name,device:'computer'});

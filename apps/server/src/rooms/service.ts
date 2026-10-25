@@ -4,7 +4,7 @@ import type { Config } from '../config';
 import { invitation } from './invitations';
 export class Rooms {
   onRevoke:(room:Room,memberId?:string)=>void=()=>{};
-  constructor(readonly store:Store,readonly c:Config,readonly now:()=>number){}
+  constructor(readonly store:Store,readonly c:Config,readonly now:()=>number,readonly mono:()=>number){}
   byId(id:string){const r=this.store.rooms.get(id);if(!r||r.closed)fault(404,'NOT_FOUND','Room unavailable');const owner=[...this.store.sessions.values()].find(s=>s.id===r.ownerId);const active=[...this.store.transfers.values()].some(t=>t.roomId===r.id&&!t.revoked&&isUnfinished(t.state)&&t.state!=='offered'&&this.now()-t.progressAt<LIMITS.stalledMs);if(r.expiresAt<=this.now()||!owner||owner.expiresAt<=this.now()||(!active&&this.now()-r.activity>=LIMITS.idleMs)){this.close(r);fault(410,'EXPIRED','Room expired');}return r;}
   member(id:string,s:Session){const r=this.byId(id);if(!r.members.has(s.id))fault(403,'FORBIDDEN','Not a room member');return r;}
   owner(id:string,s:Session){const r=this.member(id,s);if(r.ownerId!==s.id)fault(403,'FORBIDDEN','Owner action only');return r;}
