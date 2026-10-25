@@ -1,4 +1,33 @@
-import { afterEach,it,expect } from 'vitest';
-import { harness,roomPair,type Harness } from '../../test/helpers';
-let h:Harness;afterEach(async()=>{await h?.close();});
-it('delivers accepted exact UTF-8 text once and scopes literal content',async()=>{h=await harness();const {a,b,room}=await roomPair(h);const text='<script>😀</script>';const t=(await a.req('POST',`/api/rooms/${room.id}/offers`,{kind:'text',recipientId:b.dto.id,byteLength:21})).json();const url=`/api/transfers/${t.id}/text`;expect((await a.req('POST',url,{text})).statusCode).toBe(409);await b.req('POST',`/api/transfers/${t.id}/accept`,{});expect((await a.req('POST',url,{text:'a'})).statusCode).toBe(400);expect((await a.req('POST',url,{text})).statusCode).toBe(200);expect((await a.req('POST',url,{text})).statusCode).toBe(200);expect((await b.req('GET',`/api/transfers/${t.id}`)).json().text).toBe(text);expect((await a.req('GET',`/api/transfers/${t.id}`)).json().text).toBeUndefined();expect((await b.req('GET',url)).body).toBe(text);expect((await a.req('GET',url)).statusCode).toBe(403);expect((await a.req('POST',url,{text:'x'.repeat(65537)})).statusCode).toBe(400);});
+import { afterEach, it, expect } from "vitest";
+import { harness, roomPair, type Harness } from "../../test/helpers";
+let h: Harness;
+afterEach(async () => {
+  await h?.close();
+});
+it("delivers accepted exact UTF-8 text once and scopes literal content", async () => {
+  h = await harness();
+  const { a, b, room } = await roomPair(h);
+  const text = "<script>😀</script>";
+  const t = (
+    await a.req("POST", `/api/rooms/${room.id}/offers`, {
+      kind: "text",
+      recipientId: b.dto.id,
+      byteLength: 21,
+    })
+  ).json();
+  const url = `/api/transfers/${t.id}/text`;
+  expect((await a.req("POST", url, { text })).statusCode).toBe(409);
+  await b.req("POST", `/api/transfers/${t.id}/accept`, {});
+  expect((await a.req("POST", url, { text: "a" })).statusCode).toBe(400);
+  expect((await a.req("POST", url, { text })).statusCode).toBe(200);
+  expect((await a.req("POST", url, { text })).statusCode).toBe(200);
+  expect((await b.req("GET", `/api/transfers/${t.id}`)).json().text).toBe(text);
+  expect(
+    (await a.req("GET", `/api/transfers/${t.id}`)).json().text,
+  ).toBeUndefined();
+  expect((await b.req("GET", url)).body).toBe(text);
+  expect((await a.req("GET", url)).statusCode).toBe(403);
+  expect(
+    (await a.req("POST", url, { text: "x".repeat(65537) })).statusCode,
+  ).toBe(400);
+});

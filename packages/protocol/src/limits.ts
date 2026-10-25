@@ -1,2 +1,26 @@
-export const LIMITS = Object.freeze({ members:8, files:20, fileBytes:2147483648, offerBytes:2147483648, chunkBytes:1048576, textBytes:65536, offerMs:120000, retentionMs:1800000, sessionMs:28800000, roomMs:28800000, idleMs:3600000, graceMs:60000, stalledMs:600000, diskBytes:8589934592, textBudget:4194304, rooms:64, sessions:1024, pendingRoom:32, pendingSender:8, uploads:8, verifications:2, transfers:4096 });
-export const utf8Bytes = (text: string): number => new TextEncoder().encode(text).byteLength;
+export const LIMITS = Object.freeze({
+  members: 8,
+  files: 20,
+  fileBytes: 2147483648,
+  offerBytes: 2147483648,
+  chunkBytes: 1048576,
+  textBytes: 65536,
+  offerMs: 120000,
+  retentionMs: 1800000,
+  sessionMs: 28800000,
+  roomMs: 28800000,
+  idleMs: 3600000,
+  graceMs: 60000,
+  stalledMs: 600000,
+  diskBytes: 8589934592,
+  textBudget: 4194304,
+  rooms: 64,
+  sessions: 1024,
+  pendingRoom: 32,
+  pendingSender: 8,
+  uploads: 8,
+  verifications: 2,
+  transfers: 4096,
+});
+export const utf8Bytes = (text: string): number =>
+  new TextEncoder().encode(text).byteLength;

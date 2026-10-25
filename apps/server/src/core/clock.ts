@@ -1,1 +1,5 @@
-export interface Dependencies { now?:()=>number; monotonic?:()=>number; schedule?:boolean; }
+export interface Dependencies {
+  now?: () => number;
+  monotonic?: () => number;
+  schedule?: boolean;
+}

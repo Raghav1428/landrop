@@ -1,53 +1,148 @@
-import Fastify from 'fastify';
-import cookie from '@fastify/cookie';
-import serveStatic from '@fastify/static';
-import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { ZodError } from 'zod';
-import { LIMITS } from '@landrop/protocol';
-import type { Config } from './config';
-import type { Dependencies } from './core/clock';
-import { ApiFault, Store, fault } from './core/store';
-import { checkOrigin } from './security/origins';
-import { session, sessionRoutes } from './security/sessions';
-import { csrf } from './security/csrf';
-import { RateLimits } from './security/rate-limits';
-import { Rooms } from './rooms/service';
-import { roomRoutes } from './rooms/routes';
-import { realtime } from './realtime/gateway';
-import { Transfers } from './transfers/service';
-import { transferRoutes } from './transfers/routes';
-import { Disk } from './storage/filesystem';
-import { Locks } from './core/locks';
-import { chunkRoutes } from './transfers/chunk-upload';
-import { finalizeRoutes } from './transfers/finalize';
-import { downloadRoutes } from './downloads/routes';
-import { textRoutes } from './text/routes';
-import { Cleanup } from './lifecycle/cleanup';
-import { lifecycle } from './lifecycle/shutdown';
-import { metricsRoutes } from './metrics/routes';
-export async function buildApp(c:Config,d:Dependencies={}) {
-  const now=d.now??Date.now;const store=new Store();const rates=new RateLimits(now);
-  const tls=c.tlsKey&&c.tlsCert?{key:await readFile(c.tlsKey),cert:await readFile(c.tlsCert)}:undefined;
-  const app=Fastify({logger:false,trustProxy:false,bodyLimit:98304,connectionTimeout:30000,requestTimeout:120000,keepAliveTimeout:5000,maxRequestsPerSocket:1000,...(tls?{https:tls}:{})});
+import Fastify from "fastify";
+import cookie from "@fastify/cookie";
+import serveStatic from "@fastify/static";
+import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { ZodError } from "zod";
+import { LIMITS } from "@landrop/protocol";
+import type { Config } from "./config";
+import type { Dependencies } from "./core/clock";
+import { ApiFault, Store, fault } from "./core/store";
+import { checkOrigin } from "./security/origins";
+import { session, sessionRoutes } from "./security/sessions";
+import { csrf } from "./security/csrf";
+import { RateLimits } from "./security/rate-limits";
+import { Rooms } from "./rooms/service";
+import { roomRoutes } from "./rooms/routes";
+import { realtime } from "./realtime/gateway";
+import { Transfers } from "./transfers/service";
+import { transferRoutes } from "./transfers/routes";
+import { Disk } from "./storage/filesystem";
+import { Locks } from "./core/locks";
+import { chunkRoutes } from "./transfers/chunk-upload";
+import { finalizeRoutes } from "./transfers/finalize";
+import { downloadRoutes } from "./downloads/routes";
+import { textRoutes } from "./text/routes";
+import { Cleanup } from "./lifecycle/cleanup";
+import { lifecycle } from "./lifecycle/shutdown";
+import { metricsRoutes } from "./metrics/routes";
+export async function buildApp(c: Config, d: Dependencies = {}) {
+  const now = d.now ?? Date.now;
+  const store = new Store();
+  const rates = new RateLimits(now);
+  const tls =
+    c.tlsKey && c.tlsCert
+      ? { key: await readFile(c.tlsKey), cert: await readFile(c.tlsCert) }
+      : undefined;
+  const app = Fastify({
+    logger: false,
+    trustProxy: false,
+    // A valid 64 KiB text may expand sixfold when JSON escapes control characters.
+    bodyLimit: LIMITS.textBytes * 6 + 1024,
+    connectionTimeout: 30000,
+    requestTimeout: 120000,
+    keepAliveTimeout: 5000,
+    maxRequestsPerSocket: 1000,
+    ...(tls ? { https: tls } : {}),
+  });
+  app.server.maxConnections = 256;
   await app.register(cookie);
-  app.setErrorHandler((err,req,reply)=>{const error=err as Error & {statusCode?:number};if(err instanceof ApiFault)return reply.code(err.status).send({error:{code:err.code,message:err.message,retryable:err.retryable}});if(err instanceof ZodError||error.statusCode&&error.statusCode<500)return reply.code(error.statusCode??400).send({error:{code:'VALIDATION',message:'Invalid request',retryable:false}});req.log.error({message:'Internal operation failed'});return reply.code(500).send({error:{code:'STORAGE',message:'Host operation failed',retryable:true}});});
-  app.addHook('onRequest',async(req,reply)=>{reply.header('X-Content-Type-Options','nosniff').header('Cache-Control','no-store').header('Referrer-Policy','no-referrer').header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");checkOrigin(req,c,!['GET','HEAD','OPTIONS'].includes(req.method));if(store.stopping)fault(503,'UNAVAILABLE','Host stopping');if(req.url.startsWith('/api/'))rates.hit(`api:${req.ip}`,1800);});
-  app.addHook('preHandler',async req=>{if(req.url.startsWith('/api/')&&!['GET','HEAD','OPTIONS'].includes(req.method)&&req.url!=='/api/session')csrf(req,session(req,store,now));});
-  sessionRoutes(app,store,c,now,rates);
-  const rooms=new Rooms(store,c,now,d.monotonic??(()=>performance.now()));
-  await realtime(app,rooms);
-  roomRoutes(app,rooms,rates);
-  const transfers=new Transfers(rooms,d.monotonic??(()=>performance.now()));
-  transferRoutes(app,transfers);
-  const disk=new Disk(c.storageRoot);await disk.init();const locks=new Locks();
-  chunkRoutes(app,transfers,disk,locks);
-  finalizeRoutes(app,transfers,disk,locks);downloadRoutes(app,transfers,disk);
-  textRoutes(app,transfers);metricsRoutes(app,transfers);const cleanup=new Cleanup(transfers,disk,locks);lifecycle(app,transfers,cleanup,locks,d.schedule!==false);
-  app.get('/api/health',async()=>({ok:true}));
-  app.get('/api/config',async()=>({limits:LIMITS,addresses:c.addresses,encrypted:Boolean(tls)}));
-  const web=resolve('apps/web/dist');if(existsSync(web))await app.register(serveStatic,{root:web,wildcard:false});
-  app.setNotFoundHandler((req,reply)=>{if(req.url.startsWith('/api/')||req.url.includes('.')||req.method!=='GET'||!existsSync(resolve(web,'index.html')))return reply.code(404).send({error:{code:'NOT_FOUND',message:'Not found',retryable:false}});return reply.sendFile('index.html');});
+  app.setErrorHandler((err, req, reply) => {
+    const error = err as Error & { statusCode?: number };
+    if (err instanceof ApiFault)
+      return reply.code(err.status).send({
+        error: {
+          code: err.code,
+          message: err.message,
+          retryable: err.retryable,
+        },
+      });
+    if (err instanceof ZodError || (error.statusCode && error.statusCode < 500))
+      return reply.code(error.statusCode ?? 400).send({
+        error: {
+          code: "VALIDATION",
+          message: "Invalid request",
+          retryable: false,
+        },
+      });
+    req.log.error({ message: "Internal operation failed" });
+    return reply.code(500).send({
+      error: {
+        code: "STORAGE",
+        message: "Host operation failed",
+        retryable: true,
+      },
+    });
+  });
+  app.addHook("onRequest", async (req, reply) => {
+    reply
+      .header("X-Content-Type-Options", "nosniff")
+      .header("Cache-Control", "no-store")
+      .header("Referrer-Policy", "no-referrer")
+      .header(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      );
+    checkOrigin(req, c, !["GET", "HEAD", "OPTIONS"].includes(req.method));
+    if (store.stopping) fault(503, "UNAVAILABLE", "Host stopping");
+    if (req.url.startsWith("/api/")) rates.hit(`api:${req.ip}`, 1800);
+  });
+  app.addHook("preHandler", async (req) => {
+    if (
+      req.url.startsWith("/api/") &&
+      !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
+      req.url !== "/api/session"
+    )
+      csrf(req, session(req, store, now));
+  });
+  sessionRoutes(app, store, c, now, rates);
+  const rooms = new Rooms(
+    store,
+    c,
+    now,
+    d.monotonic ?? (() => performance.now()),
+  );
+  await realtime(app, rooms);
+  roomRoutes(app, rooms, rates);
+  const transfers = new Transfers(
+    rooms,
+    d.monotonic ?? (() => performance.now()),
+  );
+  transferRoutes(app, transfers);
+  const disk = new Disk(c.storageRoot);
+  await disk.init();
+  const locks = new Locks();
+  chunkRoutes(app, transfers, disk, locks);
+  finalizeRoutes(app, transfers, disk, locks);
+  downloadRoutes(app, transfers, disk);
+  textRoutes(app, transfers);
+  metricsRoutes(app, transfers);
+  const cleanup = new Cleanup(transfers, disk, locks);
+  lifecycle(app, transfers, cleanup, locks, d.schedule !== false);
+  app.addHook("onClose", async () => {
+    await disk.close();
+  });
+  app.get("/api/health", async () => ({ ok: true }));
+  app.get("/api/config", async () => ({
+    limits: LIMITS,
+    addresses: c.addresses,
+    encrypted: Boolean(tls),
+  }));
+  const web = resolve("apps/web/dist");
+  if (existsSync(web))
+    await app.register(serveStatic, { root: web, wildcard: false });
+  app.setNotFoundHandler((req, reply) => {
+    if (
+      req.url.startsWith("/api/") ||
+      req.url.includes(".") ||
+      req.method !== "GET" ||
+      !existsSync(resolve(web, "index.html"))
+    )
+      return reply.code(404).send({
+        error: { code: "NOT_FOUND", message: "Not found", retryable: false },
+      });
+    return reply.sendFile("index.html");
+  });
   return app;
 }

@@ -1,0 +1,57 @@
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/inter-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/inter-latin-600-normal.woff2") format("woff2");
+}
+:root {
+  color-scheme: dark;
+  --ground: #000;
+  --surface: #111;
+  --raised: #2a2a2a;
+  --active: #222;
+  --border: #1a1a1a;
+  --rule: #161616;
+  --control: #444;
+  --text: #fff;
+  --muted: #b4b4b4;
+  --faint: #949494;
+  --accent: #c6f24e;
+  --positive: #c6f24e;
+  --negative: #f08089;
+  --warning: #e5a93b;
+  --primary: #fff;
+  --primary-ink: #000;
+  --pill-positive-bg: #222a10;
+  --pill-negative-bg: #2c1a20;
+  --pill-neutral-bg: #222;
+  --font: Inter, system-ui, sans-serif;
+  --fs-title: 20px;
+  --fs-section: 16px;
+  --fs-kpi: 24px;
+  --fs-body: 14px;
+  --fs-small: 12px;
+  --radius-card: 20px;
+  --radius-control: 999px;
+  --sidebar-width: 210px;
+  --gap: 14px;
+  --pad: 29px;
+  --card-pad: 22px;
+  --control-height: 36px;
+  --overlay: rgb(0 0 0 / 0.78);
+}

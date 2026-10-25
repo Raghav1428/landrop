@@ -8,3 +8,8 @@ playwright-report/
 test-results/
 coverage/
 *.log
+certs/
+.taste-skill/inspect/
+.taste-skill/authenticated/
+.taste-skill/browser/
+.taste-skill/states/

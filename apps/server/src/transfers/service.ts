@@ -1,17 +1,199 @@
-import { LIMITS,isUnfinished,type OfferInput,type TransferState } from '@landrop/protocol';
-import { type Transfer,type Session,type StoredFile,fault,id } from '../core/store';
-import { type Rooms } from '../rooms/service';
-import { reserve,release } from './reservations';
+import {
+  LIMITS,
+  isUnfinished,
+  type OfferInput,
+  type TransferState,
+} from "@landrop/protocol";
+import {
+  type Transfer,
+  type Session,
+  type StoredFile,
+  fault,
+  id,
+} from "../core/store";
+import { type Rooms } from "../rooms/service";
+import { reserve, release } from "./reservations";
 export class Transfers {
-  cleanup:(t:Transfer)=>Promise<void>=async t=>{release(this.rooms.store,t);t.cleanupPending=false;};
-  constructor(readonly rooms:Rooms,readonly mono:()=>number){rooms.onRevoke=(r,member)=>{for(const t of rooms.store.transfers.values())if(t.roomId===r.id&&(!member||[t.senderId,t.recipientId].includes(member)))this.revoke(t,'cancelled');};}
-  get(transferId:string,s:Session,allowRevoked=false){const t=this.rooms.store.transfers.get(transferId);if(!t||![t.senderId,t.recipientId].includes(s.id))fault(404,'NOT_FOUND','Transfer unavailable');this.rooms.member(t.roomId,s);this.expire(t);if(t.revoked&&!allowRevoked)fault(410,'EXPIRED','Transfer unavailable');return t;}
-  expire(t:Transfer){if(t.revoked)return;const now=this.rooms.now();const unfinished=isUnfinished(t.state);const disconnected=unfinished&&[t.senderId,t.recipientId].some(id=>{const s=[...this.rooms.store.sessions.values()].find(s=>s.id===id);return !s||s.expiresAt<=now||(!s.sockets.size&&now-s.offlineAt>=LIMITS.graceMs);});if(t.expiresAt<=now||(unfinished&&now-t.progressAt>=LIMITS.stalledMs)||disconnected)this.revoke(t,'expired');}
-  create(roomId:string,s:Session,v:OfferInput){const r=this.rooms.member(roomId,s);const store=this.rooms.store;if(v.recipientId===s.id)fault(400,'VALIDATION','Choose another member');const recipient=[...store.sessions.values()].find(p=>p.id===v.recipientId);if(!recipient||!r.members.has(recipient.id)||!recipient.sockets.size||recipient.expiresAt<=this.rooms.now())fault(409,'CONFLICT','Recipient is offline or unavailable');for(const t of store.transfers.values())this.expire(t);const pending=[...store.transfers.values()].filter(t=>!t.revoked&&t.state==='offered');if(pending.filter(t=>t.roomId===r.id).length>=LIMITS.pendingRoom||pending.filter(t=>t.senderId===s.id).length>=LIMITS.pendingSender||store.transfers.size>=LIMITS.transfers)fault(429,'CAPACITY','Too many offers');const files:StoredFile[]=v.kind==='files'?v.files.map(f=>({...f,diskId:id(),state:'queued',committedBytes:0,hashes:[],downloadRequested:false})):[];const now=this.rooms.now();const t:Transfer={id:id(),roomId:r.id,senderId:s.id,recipientId:v.recipientId,kind:v.kind,byteLength:v.kind==='files'?v.files.reduce((n,f)=>n+f.size,0):v.byteLength,state:'offered',createdAt:now,expiresAt:Math.min(now+LIMITS.offerMs,r.expiresAt),progressAt:now,files,reserved:false,revoked:false,cleanupPending:false,retryAt:0,cleanupAttempts:0,ingressBytes:0,acknowledgedBytes:0,servedBytes:0,verificationMs:0,handles:new Set()};store.transfers.set(t.id,t);this.rooms.touch(r);return t;}
-  decide(t:Transfer,s:Session,action:'accept'|'reject'|'cancel'){if(t.revoked&&action!=='cancel')fault(410,'EXPIRED','Transfer unavailable');if(action!=='cancel'&&s.id!==t.recipientId)fault(403,'FORBIDDEN','Receiver decision only');if(action==='cancel'){this.revoke(t,'cancelled');return t;}if(action==='accept'){if(['accepted','transferring','completed'].includes(t.state))return t;if(t.state!=='offered'||t.revoked)fault(409,'CONFLICT','Offer already decided');reserve(this.rooms.store,this.rooms.c,t);t.state='accepted';t.progressAt=this.rooms.now();t.expiresAt=this.rooms.byId(t.roomId).expiresAt;}else{if(t.state==='rejected')return t;if(t.state!=='offered')fault(409,'CONFLICT','Offer already decided');t.state='rejected';}this.rooms.touch(this.rooms.byId(t.roomId));return t;}
-  writable(t:Transfer,s:Session){this.get(t.id,s);if(s.id!==t.senderId)fault(403,'FORBIDDEN','Sender action only');if(!['accepted','transferring'].includes(t.state)||!t.reserved)fault(409,'CONFLICT','Receiver approval required');}
-  file(t:Transfer,fileId:string){const f=t.files.find(f=>f.id===fileId);if(!f)fault(404,'NOT_FOUND','File unavailable');return f;}
-  progress(t:Transfer){t.progressAt=this.rooms.now();this.rooms.touch(this.rooms.byId(t.roomId));}
-  complete(t:Transfer){t.state='completed';t.expiresAt=Math.min(this.rooms.now()+LIMITS.retentionMs,this.rooms.byId(t.roomId).expiresAt);this.progress(t);}
-  revoke(t:Transfer,state:TransferState='cancelled'){if(t.revoked)return;t.revoked=true;if(isUnfinished(t.state))t.state=state;t.text=undefined;t.cleanupPending=true;for(const f of t.files)f.state='revoked';for(const handle of t.handles)handle.destroy(new Error('Access revoked'));const r=this.rooms.store.rooms.get(t.roomId);if(r)this.rooms.changed(r);void this.cleanup(t).catch(()=>{t.retryAt=this.rooms.now()+1000;});}
+  cleanup: (t: Transfer) => Promise<void> = async (t) => {
+    release(this.rooms.store, t);
+    t.cleanupPending = false;
+  };
+  constructor(
+    readonly rooms: Rooms,
+    readonly mono: () => number,
+  ) {
+    rooms.onRevoke = (r, member) => {
+      for (const t of rooms.store.transfers.values())
+        if (
+          t.roomId === r.id &&
+          (!member || [t.senderId, t.recipientId].includes(member))
+        )
+          this.revoke(t, "cancelled");
+    };
+  }
+  get(transferId: string, s: Session, allowRevoked = false) {
+    const t = this.rooms.store.transfers.get(transferId);
+    if (!t || ![t.senderId, t.recipientId].includes(s.id))
+      fault(404, "NOT_FOUND", "Transfer unavailable");
+    this.rooms.member(t.roomId, s);
+    this.expire(t);
+    if (t.revoked && !allowRevoked)
+      fault(410, "EXPIRED", "Transfer unavailable");
+    return t;
+  }
+  expire(t: Transfer) {
+    if (t.revoked) return;
+    const now = this.rooms.now();
+    const unfinished = isUnfinished(t.state);
+    const disconnected =
+      unfinished &&
+      [t.senderId, t.recipientId].some((id) => {
+        const s = [...this.rooms.store.sessions.values()].find(
+          (s) => s.id === id,
+        );
+        return (
+          !s ||
+          s.expiresAt <= now ||
+          (!s.sockets.size && now - s.offlineAt >= LIMITS.graceMs)
+        );
+      });
+    if (
+      t.expiresAt <= now ||
+      (unfinished && now - t.progressAt >= LIMITS.stalledMs) ||
+      disconnected
+    )
+      this.revoke(t, "expired");
+  }
+  create(roomId: string, s: Session, v: OfferInput) {
+    const r = this.rooms.member(roomId, s);
+    const store = this.rooms.store;
+    if (v.recipientId === s.id)
+      fault(400, "VALIDATION", "Choose another member");
+    const recipient = [...store.sessions.values()].find(
+      (p) => p.id === v.recipientId,
+    );
+    if (
+      !recipient ||
+      !r.members.has(recipient.id) ||
+      !recipient.sockets.size ||
+      recipient.expiresAt <= this.rooms.now()
+    )
+      fault(409, "CONFLICT", "Recipient is offline or unavailable");
+    for (const t of store.transfers.values()) this.expire(t);
+    const pending = [...store.transfers.values()].filter(
+      (t) => !t.revoked && t.state === "offered",
+    );
+    if (
+      pending.filter((t) => t.roomId === r.id).length >= LIMITS.pendingRoom ||
+      pending.filter((t) => t.senderId === s.id).length >=
+        LIMITS.pendingSender ||
+      store.transfers.size >= LIMITS.transfers
+    )
+      fault(429, "CAPACITY", "Too many offers");
+    const files: StoredFile[] =
+      v.kind === "files"
+        ? v.files.map((f) => ({
+            ...f,
+            diskId: id(),
+            state: "queued",
+            committedBytes: 0,
+            hashes: [],
+            downloadRequested: false,
+          }))
+        : [];
+    const now = this.rooms.now();
+    const t: Transfer = {
+      id: id(),
+      roomId: r.id,
+      senderId: s.id,
+      recipientId: v.recipientId,
+      kind: v.kind,
+      byteLength:
+        v.kind === "files"
+          ? v.files.reduce((n, f) => n + f.size, 0)
+          : v.byteLength,
+      state: "offered",
+      createdAt: now,
+      expiresAt: Math.min(now + LIMITS.offerMs, r.expiresAt),
+      progressAt: now,
+      files,
+      reserved: false,
+      revoked: false,
+      cleanupPending: false,
+      retryAt: 0,
+      cleanupAttempts: 0,
+      ingressBytes: 0,
+      acknowledgedBytes: 0,
+      servedBytes: 0,
+      verificationMs: 0,
+      handles: new Set(),
+    };
+    store.transfers.set(t.id, t);
+    this.rooms.touch(r);
+    return t;
+  }
+  decide(t: Transfer, s: Session, action: "accept" | "reject" | "cancel") {
+    if (t.revoked && action !== "cancel")
+      fault(410, "EXPIRED", "Transfer unavailable");
+    if (action !== "cancel" && s.id !== t.recipientId)
+      fault(403, "FORBIDDEN", "Receiver decision only");
+    if (action === "cancel") {
+      this.revoke(t, "cancelled");
+      return t;
+    }
+    if (action === "accept") {
+      if (["accepted", "transferring", "completed"].includes(t.state)) return t;
+      if (t.state !== "offered" || t.revoked)
+        fault(409, "CONFLICT", "Offer already decided");
+      reserve(this.rooms.store, this.rooms.c, t);
+      t.state = "accepted";
+      t.progressAt = this.rooms.now();
+      t.expiresAt = this.rooms.byId(t.roomId).expiresAt;
+    } else {
+      if (t.state === "rejected") return t;
+      if (t.state !== "offered")
+        fault(409, "CONFLICT", "Offer already decided");
+      t.state = "rejected";
+    }
+    this.rooms.touch(this.rooms.byId(t.roomId));
+    return t;
+  }
+  writable(t: Transfer, s: Session) {
+    this.get(t.id, s);
+    if (s.id !== t.senderId) fault(403, "FORBIDDEN", "Sender action only");
+    if (!["accepted", "transferring"].includes(t.state) || !t.reserved)
+      fault(409, "CONFLICT", "Receiver approval required");
+  }
+  file(t: Transfer, fileId: string) {
+    const f = t.files.find((f) => f.id === fileId);
+    if (!f) fault(404, "NOT_FOUND", "File unavailable");
+    return f;
+  }
+  progress(t: Transfer) {
+    t.progressAt = this.rooms.now();
+    this.rooms.touch(this.rooms.byId(t.roomId));
+  }
+  complete(t: Transfer) {
+    t.state = "completed";
+    t.expiresAt = Math.min(
+      this.rooms.now() + LIMITS.retentionMs,
+      this.rooms.byId(t.roomId).expiresAt,
+      t.expiresAt,
+    );
+    this.progress(t);
+  }
+  revoke(t: Transfer, state: TransferState = "cancelled") {
+    if (t.revoked) return;
+    t.revoked = true;
+    if (isUnfinished(t.state)) t.state = state;
+    t.text = undefined;
+    t.cleanupPending = true;
+    for (const f of t.files) f.state = "revoked";
+    for (const handle of t.handles) handle.destroy(new Error("Access revoked"));
+    const r = this.rooms.store.rooms.get(t.roomId);
+    if (r) this.rooms.changed(r);
+    void this.cleanup(t).catch(() => {
+      t.retryAt = this.rooms.now() + 1000;
+    });
+  }
 }

@@ -13,4 +13,8 @@ Source: user-supplied approved plan, 2026-10-25, planning session `01a17347-1ff7
 9. True-black-flat React workspace, local fonts/QR, worker hashing, bounded uploads/retries, refresh limitations, keyboard/mobile/HTTP fallback flows.
 10. Production Playwright, Vitest integration/race tests, CI, networking/security/protocol/demo documentation and evidence.
 
+## Execution status
+
+Tasks 1–10 implemented, including protocol/security/networking/demo/verification documentation and CI configuration. Latest observed local gates: 35 unit/component tests, 14 integration tests, 13 production browser tests; typecheck, lint, build and audit passed. Authenticated and fault-state screenshots reviewed at 1440/768/390. See [actual verification record](../../verification.md) for scope, retained WARNs and limitations. Physical-device/offline/trusted-TLS and optional 2 GiB acceptance remain unchecked, not claimed complete; hosted CI has not run locally.
+
 Verification: `npm ci`, typecheck, lint, unit, integration, production build, production Playwright on 4173. Run tasteskill lint/inspection at 1440/768/390 and read screenshots. Physical LAN/phone/offline checks remain pending until actually observed. Never equate acknowledgement with receiver save, goodput with bandwidth, or revocation with completed deletion.

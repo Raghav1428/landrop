@@ -1,4 +1,48 @@
-import { LIMITS } from '@landrop/protocol';
-import type { Transfers } from '../transfers/service';
-import type { Cleanup } from './cleanup';
-export function sweep(service:Transfers,cleanup:Cleanup){const {rooms}=service;const {store}=rooms;const now=rooms.now();for(const r of store.rooms.values())if(!r.closed){try{rooms.byId(r.id);}catch{/* byId revokes immediately */}}for(const t of store.transfers.values()){service.expire(t);if(t.cleanupPending&&t.retryAt<=now)void cleanup.run(t);if(t.revoked&&!t.cleanupPending&&now-t.createdAt>LIMITS.retentionMs)store.transfers.delete(t.id);if(t.state==='rejected'&&now-t.createdAt>LIMITS.offerMs)store.transfers.delete(t.id);}for(const [token,s] of store.sessions)if(s.expiresAt<=now){if(s.roomId){const r=store.rooms.get(s.roomId);if(r&&!r.closed){if(r.ownerId===s.id)rooms.close(r);else rooms.remove(r,s.id);}}for(const ws of s.sockets)ws.terminate();store.sessions.delete(token);}for(const [id,r] of store.rooms)if(r.closed&&![...store.transfers.values()].some(t=>t.roomId===id&&t.cleanupPending))store.rooms.delete(id);}
+import { LIMITS } from "@landrop/protocol";
+import type { Transfers } from "../transfers/service";
+import type { Cleanup } from "./cleanup";
+export function sweep(service: Transfers, cleanup: Cleanup) {
+  const { rooms } = service;
+  const { store } = rooms;
+  const now = rooms.now();
+  for (const r of store.rooms.values())
+    if (!r.closed) {
+      try {
+        rooms.byId(r.id);
+      } catch {
+        /* byId revokes immediately */
+      }
+    }
+  for (const t of store.transfers.values()) {
+    service.expire(t);
+    if (t.cleanupPending && t.retryAt <= now) void cleanup.run(t);
+    if (
+      t.revoked &&
+      !t.cleanupPending &&
+      now - t.createdAt > LIMITS.retentionMs
+    )
+      store.transfers.delete(t.id);
+    if (t.state === "rejected" && now - t.createdAt > LIMITS.offerMs)
+      store.transfers.delete(t.id);
+  }
+  for (const [token, s] of store.sessions)
+    if (s.expiresAt <= now) {
+      if (s.roomId) {
+        const r = store.rooms.get(s.roomId);
+        if (r && !r.closed) {
+          if (r.ownerId === s.id) rooms.close(r);
+          else rooms.remove(r, s.id);
+        }
+      }
+      for (const ws of s.sockets) ws.terminate();
+      store.sessions.delete(token);
+    }
+  for (const [id, r] of store.rooms)
+    if (
+      r.closed &&
+      ![...store.transfers.values()].some(
+        (t) => t.roomId === id && t.cleanupPending,
+      )
+    )
+      store.rooms.delete(id);
+}

@@ -1,6 +1,58 @@
-import { afterEach,it,expect } from 'vitest';
-import { harness,roomPair,type Harness } from '../../test/helpers';
-import { readyFile } from '../../test/transfers';
-let h:Harness;afterEach(async()=>{await h?.close();});
-it('streams only to receiver with safe attachment headers and strict ranges',async()=>{h=await harness();const {a,b,room}=await roomPair(h);const {base}=await readyFile(h,a,b,room.id,Buffer.from('abcdef'),'résumé.html');expect((await a.req('GET',`${base}/download`)).statusCode).toBe(403);const full=await b.req('GET',`${base}/download`);expect(full.body).toBe('abcdef');expect(full.headers['content-disposition']).toContain('attachment;');expect(full.headers['content-disposition']).toContain("filename*=UTF-8''");expect(full.headers['x-content-type-options']).toBe('nosniff');expect(full.headers['cache-control']).toBe('no-store');for(const [range,want] of [['bytes=1-3','bcd'],['bytes=-2','ef'],['bytes=4-','ef']]){const r=await b.req('GET',`${base}/download`,undefined,{range});expect(r.statusCode).toBe(206);expect(r.body).toBe(want);}for(const range of ['bytes=99-','bytes=1-2,4-5','bytes=-0','bytes=3-1','bytes=0-9007199254740993','garbage'])expect((await b.req('GET',`${base}/download`,undefined,{range})).statusCode).toBe(416);await a.req('DELETE',base.split('/files/')[0]);expect((await b.req('GET',`${base}/download`)).statusCode).toBe(410);});
-it('serves empty files but rejects empty ranges',async()=>{h=await harness();const {a,b,room}=await roomPair(h);const {base}=await readyFile(h,a,b,room.id,Buffer.alloc(0));expect((await b.req('GET',`${base}/download`)).body).toBe('');expect((await b.req('GET',`${base}/download`,undefined,{range:'bytes=0-'})).statusCode).toBe(416);});
+import { afterEach, it, expect } from "vitest";
+import { harness, roomPair, type Harness } from "../../test/helpers";
+import { readyFile } from "../../test/transfers";
+let h: Harness;
+afterEach(async () => {
+  await h?.close();
+});
+it("streams only to receiver with safe attachment headers and strict ranges", async () => {
+  h = await harness();
+  const { a, b, room } = await roomPair(h);
+  const { base } = await readyFile(
+    h,
+    a,
+    b,
+    room.id,
+    Buffer.from("abcdef"),
+    "résumé.html",
+  );
+  expect((await a.req("GET", `${base}/download`)).statusCode).toBe(403);
+  const full = await b.req("GET", `${base}/download`);
+  expect(full.body).toBe("abcdef");
+  expect(full.headers["content-disposition"]).toContain("attachment;");
+  expect(full.headers["content-disposition"]).toContain("filename*=UTF-8''");
+  expect(full.headers["x-content-type-options"]).toBe("nosniff");
+  expect(full.headers["cache-control"]).toBe("no-store");
+  for (const [range, want] of [
+    ["bytes=1-3", "bcd"],
+    ["bytes=-2", "ef"],
+    ["bytes=4-", "ef"],
+  ]) {
+    const r = await b.req("GET", `${base}/download`, undefined, { range });
+    expect(r.statusCode).toBe(206);
+    expect(r.body).toBe(want);
+  }
+  for (const range of [
+    "bytes=99-",
+    "bytes=1-2,4-5",
+    "bytes=-0",
+    "bytes=3-1",
+    "bytes=0-9007199254740993",
+    "garbage",
+  ])
+    expect(
+      (await b.req("GET", `${base}/download`, undefined, { range })).statusCode,
+    ).toBe(416);
+  await a.req("DELETE", base.split("/files/")[0]);
+  expect((await b.req("GET", `${base}/download`)).statusCode).toBe(410);
+});
+it("serves empty files but rejects empty ranges", async () => {
+  h = await harness();
+  const { a, b, room } = await roomPair(h);
+  const { base } = await readyFile(h, a, b, room.id, Buffer.alloc(0));
+  expect((await b.req("GET", `${base}/download`)).body).toBe("");
+  expect(
+    (await b.req("GET", `${base}/download`, undefined, { range: "bytes=0-" }))
+      .statusCode,
+  ).toBe(416);
+});

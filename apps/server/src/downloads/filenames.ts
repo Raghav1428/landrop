@@ -1,1 +1,9 @@
-export function attachment(name:string){const fallback=name.replace(/[^a-zA-Z0-9._ -]/g,'_').replace(/[. ]+$/,'')||'download';const encoded=encodeURIComponent(name).replace(/['()*]/g,c=>`%${c.charCodeAt(0).toString(16).toUpperCase()}`);return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;}
+export function attachment(name: string) {
+  const fallback =
+    name.replace(/[^a-zA-Z0-9._ -]/g, "_").replace(/[. ]+$/, "") || "download";
+  const encoded = encodeURIComponent(name).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}

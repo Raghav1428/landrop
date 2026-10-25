@@ -1,4 +1,51 @@
-import type { Transfer, Session } from '../core/store';
-import type { MetricsDto, TransferDto } from '@landrop/protocol';
-export function metrics(t:Transfer,mono:()=>number):MetricsDto{const elapsed=t.startedAt===undefined?null:Math.max(0,(t.finishedAt??mono())-t.startedAt);return {logicalBytes:t.byteLength,acknowledgedBytes:t.acknowledgedBytes,ingressBytes:t.ingressBytes,servedBytes:t.servedBytes,verificationMs:t.verificationMs,elapsedUploadMs:elapsed,goodputBytesPerSecond:elapsed!==null&&elapsed>0?t.acknowledgedBytes/(elapsed/1000):null};}
-export function transferDto(t:Transfer,s:Session,mono:()=>number):TransferDto{return {id:t.id,roomId:t.roomId,senderId:t.senderId,recipientId:t.recipientId,kind:t.kind,byteLength:t.byteLength,state:t.state,createdAt:t.createdAt,expiresAt:t.expiresAt,files:t.files.map(f=>({id:f.id,name:f.name,size:f.size,state:f.state,committedBytes:f.committedBytes,nextChunkIndex:f.hashes.length,downloadRequested:f.downloadRequested})),...(s.id===t.recipientId&&t.text!==undefined&&!t.revoked?{text:t.text}:{}),metrics:metrics(t,mono),cleanupPending:t.cleanupPending};}
+import type { Transfer, Session } from "../core/store";
+import type { MetricsDto, TransferDto } from "@landrop/protocol";
+export function metrics(t: Transfer, mono: () => number): MetricsDto {
+  const elapsed =
+    t.startedAt === undefined
+      ? null
+      : Math.max(0, (t.finishedAt ?? mono()) - t.startedAt);
+  return {
+    logicalBytes: t.byteLength,
+    acknowledgedBytes: t.acknowledgedBytes,
+    ingressBytes: t.ingressBytes,
+    servedBytes: t.servedBytes,
+    verificationMs: t.verificationMs,
+    elapsedUploadMs: elapsed,
+    goodputBytesPerSecond:
+      elapsed !== null && elapsed > 0
+        ? t.acknowledgedBytes / (elapsed / 1000)
+        : null,
+  };
+}
+export function transferDto(
+  t: Transfer,
+  s: Session,
+  mono: () => number,
+): TransferDto {
+  return {
+    id: t.id,
+    roomId: t.roomId,
+    senderId: t.senderId,
+    recipientId: t.recipientId,
+    kind: t.kind,
+    byteLength: t.byteLength,
+    state: t.state,
+    createdAt: t.createdAt,
+    expiresAt: t.expiresAt,
+    files: t.files.map((f) => ({
+      id: f.id,
+      name: f.name,
+      size: f.size,
+      state: f.state,
+      committedBytes: f.committedBytes,
+      nextChunkIndex: f.hashes.length,
+      downloadRequested: f.downloadRequested,
+    })),
+    ...(s.id === t.recipientId && t.text !== undefined && !t.revoked
+      ? { text: t.text }
+      : {}),
+    metrics: metrics(t, mono),
+    cleanupPending: t.cleanupPending,
+  };
+}

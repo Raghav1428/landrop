@@ -1,6 +1,66 @@
-import { afterEach,it,expect } from 'vitest';
-import { harness,roomPair,type Harness } from '../../test/helpers';
-import { readyFile,sha } from '../../test/transfers';
-let h:Harness;afterEach(async()=>{await h?.close();});
-it('exports scoped real unique/retry/served bytes, and does not invent a zero-byte rate',async()=>{h=await harness();const {a,b,room}=await roomPair(h);const {base,t}=await readyFile(h,a,b,room.id,Buffer.from('hello'));await b.req('GET',`${base}/download`,undefined,{range:'bytes=1-2'});const detail=(await b.req('GET',`/api/transfers/${t.id}`)).json();expect(detail.metrics.acknowledgedBytes).toBe(5);expect(detail.metrics.ingressBytes).toBe(5);expect(detail.metrics.servedBytes).toBe(2);const c=await h.user('Observer');await c.req('POST','/api/rooms/join',{code:room.invitation.code});const foreign=await c.req('GET',`/api/rooms/${room.id}/insights`);expect(foreign.statusCode).toBe(200);expect(foreign.json().transfers).toEqual([]);expect(foreign.body).not.toContain(t.id);expect(foreign.body).not.toContain('sample.txt');const exported=await a.req('GET',`/api/rooms/${room.id}/insights/export`);expect(exported.headers['content-disposition']).toContain('attachment');expect(exported.json().transfers).toHaveLength(1);const empty=await readyFile(h,a,b,room.id,Buffer.alloc(0));expect((await a.req('GET',`/api/transfers/${empty.t.id}`)).json().metrics.goodputBytesPerSecond).toBeNull();expect((await a.req('PUT',`${base}/chunks/0`,Buffer.from('hello'),{'content-type':'application/octet-stream','x-chunk-sha256':sha('hello')})).statusCode).toBe(409);});
-it('counts replay ingress without double acknowledgement while upload remains active',async()=>{h=await harness();const {a,b,room}=await roomPair(h);const t=(await a.req('POST',`/api/rooms/${room.id}/offers`,{kind:'files',recipientId:b.dto.id,files:[{id:'f',name:'m',size:1048577}]})).json();await b.req('POST',`/api/transfers/${t.id}/accept`,{});const chunk=Buffer.alloc(1048576,7);const headers={'content-type':'application/octet-stream','x-chunk-sha256':sha(chunk)};await a.req('PUT',`/api/transfers/${t.id}/files/f/chunks/0`,chunk,headers);h.advance(2000);await a.req('PUT',`/api/transfers/${t.id}/files/f/chunks/0`,chunk,headers);const result=await a.req('GET',`/api/rooms/${room.id}/insights`);expect(result.statusCode).toBe(200);const m=result.json().transfers[0].metrics;expect(m.ingressBytes).toBe(2097152);expect(m.acknowledgedBytes).toBe(1048576);expect(m.goodputBytesPerSecond).toBe(524288);});
+import { afterEach, it, expect } from "vitest";
+import { harness, roomPair, type Harness } from "../../test/helpers";
+import { readyFile, sha } from "../../test/transfers";
+let h: Harness;
+afterEach(async () => {
+  await h?.close();
+});
+it("exports scoped real unique/retry/served bytes, and does not invent a zero-byte rate", async () => {
+  h = await harness();
+  const { a, b, room } = await roomPair(h);
+  const { base, t } = await readyFile(h, a, b, room.id, Buffer.from("hello"));
+  await b.req("GET", `${base}/download`, undefined, { range: "bytes=1-2" });
+  const detail = (await b.req("GET", `/api/transfers/${t.id}`)).json();
+  expect(detail.metrics.acknowledgedBytes).toBe(5);
+  expect(detail.metrics.ingressBytes).toBe(5);
+  expect(detail.metrics.servedBytes).toBe(2);
+  const c = await h.user("Observer");
+  await c.req("POST", "/api/rooms/join", { code: room.invitation.code });
+  const foreign = await c.req("GET", `/api/rooms/${room.id}/insights`);
+  expect(foreign.statusCode).toBe(200);
+  expect(foreign.json().transfers).toEqual([]);
+  expect(foreign.body).not.toContain(t.id);
+  expect(foreign.body).not.toContain("sample.txt");
+  const exported = await a.req("GET", `/api/rooms/${room.id}/insights/export`);
+  expect(exported.headers["content-disposition"]).toContain("attachment");
+  expect(exported.json().transfers).toHaveLength(1);
+  const empty = await readyFile(h, a, b, room.id, Buffer.alloc(0));
+  expect(
+    (await a.req("GET", `/api/transfers/${empty.t.id}`)).json().metrics
+      .goodputBytesPerSecond,
+  ).toBeNull();
+  expect(
+    (
+      await a.req("PUT", `${base}/chunks/0`, Buffer.from("hello"), {
+        "content-type": "application/octet-stream",
+        "x-chunk-sha256": sha("hello"),
+      })
+    ).statusCode,
+  ).toBe(409);
+});
+it("counts replay ingress without double acknowledgement while upload remains active", async () => {
+  h = await harness();
+  const { a, b, room } = await roomPair(h);
+  const t = (
+    await a.req("POST", `/api/rooms/${room.id}/offers`, {
+      kind: "files",
+      recipientId: b.dto.id,
+      files: [{ id: "f", name: "m", size: 1048577 }],
+    })
+  ).json();
+  await b.req("POST", `/api/transfers/${t.id}/accept`, {});
+  const chunk = Buffer.alloc(1048576, 7);
+  const headers = {
+    "content-type": "application/octet-stream",
+    "x-chunk-sha256": sha(chunk),
+  };
+  await a.req("PUT", `/api/transfers/${t.id}/files/f/chunks/0`, chunk, headers);
+  h.advance(2000);
+  await a.req("PUT", `/api/transfers/${t.id}/files/f/chunks/0`, chunk, headers);
+  const result = await a.req("GET", `/api/rooms/${room.id}/insights`);
+  expect(result.statusCode).toBe(200);
+  const m = result.json().transfers[0].metrics;
+  expect(m.ingressBytes).toBe(2097152);
+  expect(m.acknowledgedBytes).toBe(1048576);
+  expect(m.goodputBytesPerSecond).toBe(524288);
+});

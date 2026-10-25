@@ -1,6 +1,79 @@
-import { afterEach,it,expect } from 'vitest';
-import { harness,roomPair,type Harness } from '../../test/helpers';
-let h:Harness;afterEach(async()=>{await h?.close();});
-it('gates payload, scopes pair metadata even from owner, and serializes accept reservations',async()=>{h=await harness({diskBudget:5});const {a,b,room}=await roomPair(h);const owner=await h.user('Observer');await owner.req('POST','/api/rooms/join',{code:room.invitation.code});const offer={kind:'files',recipientId:b.dto.id,files:[{id:'f1',name:'private.txt',size:5}]};const t=(await a.req('POST',`/api/rooms/${room.id}/offers`,offer)).json();expect(t.state).toBe('offered');expect((await a.req('POST',`/api/transfers/${t.id}/accept`,{})).statusCode).toBe(403);expect((await owner.req('GET',`/api/transfers/${t.id}`)).statusCode).toBe(404);expect((await owner.req('GET',`/api/rooms/${room.id}`)).body).not.toContain('private.txt');const results=await Promise.all([b.req('POST',`/api/transfers/${t.id}/accept`,{}),b.req('POST',`/api/transfers/${t.id}/accept`,{})]);expect(results.map(r=>r.json().state)).toEqual(['accepted','accepted']);const second=(await a.req('POST',`/api/rooms/${room.id}/offers`,offer)).json();expect((await b.req('POST',`/api/transfers/${second.id}/accept`,{})).statusCode).toBe(507);});
-it('expires offers at two minutes, rejects content and self/offline recipients',async()=>{h=await harness();const {a,b,room}=await roomPair(h);const url=`/api/rooms/${room.id}/offers`;const offer={kind:'text',recipientId:b.dto.id,byteLength:4};expect((await a.req('POST',url,{...offer,text:'oops'})).statusCode).toBe(400);expect((await a.req('POST',url,{...offer,recipientId:a.dto.id})).statusCode).toBe(400);const t=(await a.req('POST',url,offer)).json();h.advance(120000);expect((await b.req('POST',`/api/transfers/${t.id}/accept`,{})).statusCode).toBe(410);});
-it('reject/cancel decisions are deterministic and consume no accepted budget',async()=>{h=await harness({textBudget:4});const {a,b,room}=await roomPair(h);const make=async()=>(await a.req('POST',`/api/rooms/${room.id}/offers`,{kind:'text',recipientId:b.dto.id,byteLength:4})).json();const t=await make();expect((await b.req('POST',`/api/transfers/${t.id}/reject`,{})).json().state).toBe('rejected');expect((await b.req('POST',`/api/transfers/${t.id}/accept`,{})).statusCode).toBe(409);const u=await make();expect((await b.req('POST',`/api/transfers/${u.id}/accept`,{})).statusCode).toBe(200);});
+import { afterEach, it, expect } from "vitest";
+import { harness, roomPair, type Harness } from "../../test/helpers";
+let h: Harness;
+afterEach(async () => {
+  await h?.close();
+});
+it("gates payload, scopes pair metadata even from owner, and serializes accept reservations", async () => {
+  h = await harness({ diskBudget: 5 });
+  const { a, b, room } = await roomPair(h);
+  const owner = await h.user("Observer");
+  await owner.req("POST", "/api/rooms/join", { code: room.invitation.code });
+  const offer = {
+    kind: "files",
+    recipientId: b.dto.id,
+    files: [{ id: "f1", name: "private.txt", size: 5 }],
+  };
+  const t = (await a.req("POST", `/api/rooms/${room.id}/offers`, offer)).json();
+  expect(t.state).toBe("offered");
+  expect(
+    (await a.req("POST", `/api/transfers/${t.id}/accept`, {})).statusCode,
+  ).toBe(403);
+  expect((await owner.req("GET", `/api/transfers/${t.id}`)).statusCode).toBe(
+    404,
+  );
+  expect((await owner.req("GET", `/api/rooms/${room.id}`)).body).not.toContain(
+    "private.txt",
+  );
+  const results = await Promise.all([
+    b.req("POST", `/api/transfers/${t.id}/accept`, {}),
+    b.req("POST", `/api/transfers/${t.id}/accept`, {}),
+  ]);
+  expect(results.map((r) => r.json().state)).toEqual(["accepted", "accepted"]);
+  const second = (
+    await a.req("POST", `/api/rooms/${room.id}/offers`, offer)
+  ).json();
+  expect(
+    (await b.req("POST", `/api/transfers/${second.id}/accept`, {})).statusCode,
+  ).toBe(507);
+});
+it("expires offers at two minutes, rejects content and self/offline recipients", async () => {
+  h = await harness();
+  const { a, b, room } = await roomPair(h);
+  const url = `/api/rooms/${room.id}/offers`;
+  const offer = { kind: "text", recipientId: b.dto.id, byteLength: 4 };
+  expect(
+    (await a.req("POST", url, { ...offer, text: "oops" })).statusCode,
+  ).toBe(400);
+  expect(
+    (await a.req("POST", url, { ...offer, recipientId: a.dto.id })).statusCode,
+  ).toBe(400);
+  const t = (await a.req("POST", url, offer)).json();
+  h.advance(120000);
+  expect(
+    (await b.req("POST", `/api/transfers/${t.id}/accept`, {})).statusCode,
+  ).toBe(410);
+});
+it("reject/cancel decisions are deterministic and consume no accepted budget", async () => {
+  h = await harness({ textBudget: 4 });
+  const { a, b, room } = await roomPair(h);
+  const make = async () =>
+    (
+      await a.req("POST", `/api/rooms/${room.id}/offers`, {
+        kind: "text",
+        recipientId: b.dto.id,
+        byteLength: 4,
+      })
+    ).json();
+  const t = await make();
+  expect(
+    (await b.req("POST", `/api/transfers/${t.id}/reject`, {})).json().state,
+  ).toBe("rejected");
+  expect(
+    (await b.req("POST", `/api/transfers/${t.id}/accept`, {})).statusCode,
+  ).toBe(409);
+  const u = await make();
+  expect(
+    (await b.req("POST", `/api/transfers/${u.id}/accept`, {})).statusCode,
+  ).toBe(200);
+});
